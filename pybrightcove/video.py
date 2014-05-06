@@ -739,7 +739,7 @@ class Video(object):
 
     @staticmethod
     def find_by_ids(ids, connection=None, page_size=100, page_number=0,
-        sort_by=DEFAULT_SORT_BY, sort_order=DEFAULT_SORT_ORDER):
+        sort_by=DEFAULT_SORT_BY, sort_order=DEFAULT_SORT_ORDER, **kwargs):
         """
         List all videos identified by a list of Brightcove video ids
         """
@@ -749,5 +749,5 @@ class Video(object):
         ids = ','.join([str(i) for i in ids])
         return pybrightcove.connection.ItemResultSet('find_videos_by_ids',
             Video, connection, page_size, page_number, sort_by, sort_order,
-            video_ids=ids)
+            video_ids=ids, **kwargs)
 
