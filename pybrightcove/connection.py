@@ -29,15 +29,9 @@ import urllib2
 import urllib
 import tempfile
 import ftplib
-
 from xml.dom import minidom
-
-#import pybrightcove
-
-from pybrightcove import config
-from pybrightcove import http_core
-from pybrightcove import enums
-from pybrightcove import exceptions
+import pybrightcove
+from pybrightcove.enums import DEFAULT_SORT_BY, DEFAULT_SORT_ORDER
 
 
 class Connection(object):
@@ -50,8 +44,8 @@ class Connection(object):
         # pylint: disable=W,C,R
         if kwargs.get(param, None):
             setattr(self, param, kwargs[param])
-        elif config.has_option('Connection', param):
-            setattr(self, param, config.get('Connection', param))
+        elif pybrightcove.config.has_option('Connection', param):
+            setattr(self, param, pybrightcove.config.get('Connection', param))
         elif default:
             setattr(self, param, default)
 
@@ -173,10 +167,8 @@ class APIConnection(Connection):
         super(APIConnection, self).__init__(read_token=read_token,
             write_token=write_token, read_url=read_url, write_url=write_url)
         if not hasattr(self, "read_token"):
-            raise exceptions.ImproperlyConfiguredError(
+            raise pybrightcove.exceptions.ImproperlyConfiguredError(
                 "Must specify at least a read_token.")
-        self._api_url = None
-        self._api_raw_data = None
 
     def _post(self, data, file_to_upload=None):
         """
@@ -186,18 +178,18 @@ class APIConnection(Connection):
         params = {"JSONRPC": simplejson.dumps(data)}
         req = None
         if file_to_upload:
-            req = http_core.HttpRequest(self.write_url)
+            req = pybrightcove.http_core.HttpRequest(self.write_url)
             req.method = 'POST'
             req.add_body_part("JSONRPC", simplejson.dumps(data), 'text/plain')
             upload = file(file_to_upload, "rb")
             req.add_body_part("filePath", upload, 'application/octet-stream')
             req.end_of_parts()
             content_type = "multipart/form-data; boundary=%s" % \
-                http_core.MIME_BOUNDARY
+                pybrightcove.http_core.MIME_BOUNDARY
             req.headers['Content-Type'] = content_type
-            req.headers['User-Agent'] = config.USER_AGENT
+            req.headers['User-Agent'] = pybrightcove.config.USER_AGENT
 
-            req = http_core.ProxiedHttpClient().request(req)
+            req = pybrightcove.http_core.ProxiedHttpClient().request(req)
         else:
             msg = urllib.urlencode({'json': params['JSONRPC']})
             req = urllib2.urlopen(self.write_url, msg)
@@ -205,7 +197,7 @@ class APIConnection(Connection):
         if req:
             result = simplejson.loads(req.read())
             if 'error' in result and result['error']:
-                exceptions.BrightcoveError.raise_exception(
+                pybrightcove.exceptions.BrightcoveError.raise_exception(
                     result['error'])
             return result['result']
 
@@ -221,15 +213,13 @@ class APIConnection(Connection):
                 if isinstance(val, (list, tuple)):
                     val = ",".join(val)
                 url += "&%s=%s" % (key, val)
-        self._api_url = url
         req = urllib2.urlopen(url)
         data = simplejson.loads(req.read())
-        self._api_raw_data = data
         if data and data.get('error', None):
-            exceptions.BrightcoveError.raise_exception(
+            pybrightcove.exceptions.BrightcoveError.raise_exception(
                 data['error'])
         if data == None:
-            raise exceptions.NoDataFoundError(
+            raise pybrightcove.exceptions.NoDataFoundError(
                 "No data found for %s" % repr(kwargs))
         return data
 
@@ -270,7 +260,7 @@ class APIConnection(Connection):
                                   **kwargs)
         return ItemCollection(data=data,
                               item_class=item_class,
-                              _connection=self)
+                              connection=self)
 
     def get_item(self, command, **kwargs):
         # pylint: disable=W0221
@@ -278,7 +268,7 @@ class APIConnection(Connection):
         return data
 
 
-def item_lister(command, _connection, page_size, page_number, sort_by,
+def item_lister(command, connection, page_size, page_number, sort_by,
     sort_order, item_class, result_set, **kwargs):
     """
     A generator function for listing Video and Playlist objects.
@@ -286,7 +276,7 @@ def item_lister(command, _connection, page_size, page_number, sort_by,
     # pylint: disable=R0913
     page = page_number
     while True:
-        item_collection = _connection.get_list(command,
+        item_collection = connection.get_list(command,
                                              page_size=page_size,
                                              page_number=page,
                                              sort_by=sort_by,
@@ -311,15 +301,15 @@ class ItemResultSet(object):
     """
     # pylint: disable=R0903,R0902
 
-    def __init__(self, command, item_class, _connection=None, page_size=100,
-            page_number=0, sort_by=enums.DEFAULT_SORT_BY,
-            sort_order=enums.DEFAULT_SORT_ORDER, **kwargs):
+    def __init__(self, command, item_class, connection=None, page_size=100,
+            page_number=0, sort_by=DEFAULT_SORT_BY,
+            sort_order=DEFAULT_SORT_ORDER, **kwargs):
         # pylint: disable=R0913
         self.command = command
-        if _connection:
-            self._connection = _connection
+        if connection:
+            self.connection = connection
         else:
-            self._connection = APIConnection()
+            self.connection = APIConnection()
         self.page_size = page_size
         self.page_number = page_number
         self.sort_by = sort_by
@@ -329,7 +319,7 @@ class ItemResultSet(object):
         self.total_count = None
 
     def __iter__(self):
-        return item_lister(self.command, self._connection, self.page_size,
+        return item_lister(self.command, self.connection, self.page_size,
             self.page_number, self.sort_by, self.sort_order, self.item_class,
             self, **self.kwargs)
 
@@ -340,7 +330,7 @@ class ItemCollection(object):
     """
     # pylint: disable=R0903
 
-    def __init__(self, data, item_class, _connection=None):
+    def __init__(self, data, item_class, connection=None):
         self.total_count = None
         self.items = None
         self.page_number = None
@@ -352,5 +342,4 @@ class ItemCollection(object):
         self.page_number = int(data['page_number'])
         self.page_size = int(data['page_size'])
         for item in data['items']:
-            if item is not None:  # @@@ Not sure why but the Media API sometimes returns None for items in the list
-                self.items.append(item_class(data=item, _connection=_connection))
+            self.items.append(item_class(data=item, connection=connection))
