@@ -24,7 +24,7 @@ and from the actual APIs.
 
 import os
 import hashlib
-import simplejson
+import json
 import urllib2
 import urllib
 import tempfile
@@ -175,12 +175,12 @@ class APIConnection(Connection):
         Make the POST request.
         """
         # pylint: disable=E1101
-        params = {"JSONRPC": simplejson.dumps(data)}
+        params = {"JSONRPC": json.dumps(data)}
         req = None
         if file_to_upload:
             req = pybrightcove.http_core.HttpRequest(self.write_url)
             req.method = 'POST'
-            req.add_body_part("JSONRPC", simplejson.dumps(data), 'text/plain')
+            req.add_body_part("JSONRPC", json.dumps(data), 'text/plain')
             upload = file(file_to_upload, "rb")
             req.add_body_part("filePath", upload, 'application/octet-stream')
             req.end_of_parts()
@@ -195,7 +195,7 @@ class APIConnection(Connection):
             req = urllib2.urlopen(self.write_url, msg)
 
         if req:
-            result = simplejson.loads(req.read())
+            result = json.loads(req.read())
             if 'error' in result and result['error']:
                 pybrightcove.exceptions.BrightcoveError.raise_exception(
                     result['error'])
@@ -214,7 +214,7 @@ class APIConnection(Connection):
                     val = ",".join(val)
                 url += "&%s=%s" % (key, val)
         req = urllib2.urlopen(url)
-        data = simplejson.loads(req.read())
+        data = json.loads(req.read())
         if data and data.get('error', None):
             pybrightcove.exceptions.BrightcoveError.raise_exception(
                 data['error'])
